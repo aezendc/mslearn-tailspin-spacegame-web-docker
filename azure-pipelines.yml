@@ -7,11 +7,46 @@ trigger:
 - main
 
 pool:
-  vmImage: ubuntu-latest
+  name: AezenAgentPool
 
 variables:
   buildConfiguration: 'Release'
+  webRepository: 'web'
+  tag: '$(Build.BuildId)'
 
-steps:
-- script: dotnet build --configuration $(buildConfiguration)
-  displayName: 'dotnet build $(buildConfiguration)'
+stages:
+- stage: 'Build'
+  displayName: 'Build and push'
+  jobs:  
+  - job: 'Build'
+    displayName: 'Build job'
+    pool:
+      name: AezenAgentPool
+    steps:
+    - task: Docker@2
+      displayName: 'Build and push the image to container registry'
+      inputs:
+        command: buildAndPush
+        buildContext: $(Build.Repository.LocalPath)
+        repository: $(webRepository)
+        dockerfile: '$(Build.SourcesDirectory)/Tailspin.SpaceGame.Web/Dockerfile'
+        containerRegistry: 'Container Registry Connection'
+        tags: |
+          $(tag)
+          
+- stage: 'Deploy'
+  displayName: 'Deploy the container'
+  dependsOn: Build
+  jobs:
+  - job: 'Deploy'
+    displayName: 'Deploy job'
+    pool:
+      name: AezenAgentPool
+    variables:
+    - group: Release
+    steps:
+    - task: AzureWebAppContainer@1
+      inputs:
+       appName: $(WebAppName)
+       azureSubscription: 'Resource Manager - Tailspin - Space Game'
+       imageName: $(RegistryName)/$(webRepository):$(build.buildId)
